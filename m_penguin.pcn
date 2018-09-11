@@ -1,0 +1,1086 @@
+/* Penguin */
+/* m_penguin.pcn */
+
+#include <pcn_stdio.h>
+#include "pheader.h"
+
+-foreign("av.o","io.o","share.o","fpa.o","clocks.o","unify.o","demod.o",
+"weight.o","imd.o","is.o","clause.o","options.o","resolve.o","index.o",
+"paramod.o","formula.o","process.o","misc.o","lrpo.o","interface.o")
+
+/***************
+*
+*	main(argc,argv,exit_code)
+*
+***************/
+
+main(argc,argv,exit_code)
+{?
+argc == 3, argv ?= [_, arg1_str, arg2_str] ->
+	{||
+	sys:string_to_integer(arg2_str,arg2),
+	{?
+	arg2 <= MAX_NO_OF_NODES ->
+		{||
+		multi_penguin(arg1_str,arg2,exit_code)
+		},
+	default ->
+		{||
+		stdio:printf("Too many Penguins requested.\n",{},exit_code)
+		}
+	}
+	},
+default ->
+	{||
+	stdio:printf("Usage is m_penguin <file> <nodes>.\n",{},exit_code)
+	}
+
+}	/* main() */
+
+/***************
+*
+*	multi_penguin(fn,np,done)
+*
+*	fn is the string to make up the names for stdin, stdout
+*	and stderr for each Penguin: Penguin i has "fn.in.i",
+*	"fn.out.i" and "fn.err.i",
+*	np is the number of Penguins,
+*	done is set when the computation halts: when
+*	either one of the Penguins has found a proof,
+*	or all of them halt in trouble,
+*	multi_penguin() is done.
+*
+***************/
+
+multi_penguin(fn,np,done)
+{||
+	make_tuple(np,Status),
+	get_status_streams(0,np,Status,status_streams),
+	create_connection_array(C,np),
+	create_connection_array(D,np),
+/* It creates two matrices for communication: C is for communication of */
+/* clauses and D for communication of special messages.			*/
+	boot_penguins(fn,0,np,C,D,status_streams),
+	sys:merger(status_setup,status_out),
+	connect_merger(status_setup,status_streams),
+/* It constructs the merger that has as inputs the status_streams of the */
+/* Penguins and as output status_out.					*/
+	check_out(status_out,done)
+}	/* multi_penguin() */
+
+/***************
+*
+*	get_status_streams(counter,n,Status,status_streams)
+*
+*	It sets status_streams to be the list of the components of the
+*	tuple Status.
+*
+***************/
+
+get_status_streams(counter,n,Status,status_streams)
+{?
+    counter < n ->
+      {||
+	  status_streams = [ Status[counter] | status_streams_1 ],
+	  get_status_streams(counter+1,n,Status,status_streams_1)
+      },
+    default ->
+      {||
+	  status_streams = []
+      }
+}	/* get_status_streams() */
+
+/***************
+*
+*	create_connection_array(C,n)
+*
+*	It creates an n by n array of undefined definitional variables
+*	as an n-tuple C made of n-tuples.
+*
+***************/
+
+create_connection_array(C,n)
+{||
+    make_tuple(n,C),
+    create_connection_rows(0,n,C)
+}	/* create_connection_array() */
+
+/***************
+*
+*	create_connection_rows(counter,n,C)
+*
+***************/
+
+create_connection_rows(counter,n,C)
+{?
+    counter < n ->
+      {||
+	  make_tuple(n, new_row),
+	  C[counter] = new_row,
+	  create_connection_rows(counter + 1, n, C)
+      }
+}	/* create_connection_rows() */
+
+/***************
+*
+*	get_connection(C,from,to,connection)
+*
+*	It extracts from C the stream C[from,to], which connects 
+*	Penguin "from" to Penguin "to".
+*
+***************/
+
+get_connection(C,from,to,connection)
+{||
+    row = C[from],
+    connection = row[to]
+}	/* get_connection() */
+
+/***************
+*
+*	check_out(status_out,done)
+*
+****************/
+
+check_out(status_out,done)
+{?
+status_out ?= [] ->
+			{||
+			done = 0
+			}
+}	/* check_out() */
+
+/***************
+*
+*	boot_penguins(fn,pid,n,C,D,status_streams)
+*
+*	fn is the string to make up file names for the Penguins,
+*	pid is the id of the Penguin which is being booted,
+*	n is the total number of Penguins being booted,
+*	C is the matrix of streams for communication of clauses,
+*	D is the matrix of streams for communication of special messages
+*	status_streams are the streams for communication of termination.
+*
+***************/
+
+boot_penguins(fn,pid,n,C,D,status_streams)
+{?
+pid < n, status_streams ?= [s | more_stat_s] ->
+{||
+get_penguin_input_streams(pid,0,n,C,i_streams),
+get_penguin_output_streams(pid,0,n,C,o_streams),
+get_penguin_input_streams(pid,0,n,D,s_i_streams),
+get_penguin_output_streams(pid,0,n,D,s_o_streams),
+setup_penguin(fn,pid,n,i_streams,o_streams,s_i_streams,s_o_streams,s)@node(pid),
+boot_penguins(fn,pid+1,n,C,D,more_stat_s)
+}
+}	/* boot_penguins() */
+
+/***************
+*
+*	get_penguin_input_streams(proc_num,counter,n,C,input_streams)
+*
+***************/
+
+get_penguin_input_streams(proc_num,counter,n,C,input_streams)
+{?
+    counter < n ->
+      {||
+	  get_connection(C,counter,proc_num,in_stream),
+/* Get the stream from Penguin counter to Penguin proc_num.		*/
+	  input_streams = [ in_stream | input_streams_1 ],
+	  get_penguin_input_streams(proc_num,counter+1,n,C,input_streams_1)
+      },
+    default ->
+      {||
+	  input_streams = []
+      }
+}	/* get_penguin_input_streams() */
+
+/***************
+*
+*	get_penguin_output_streams(proc_num,counter,n,C,output_streams)
+*
+***************/
+
+get_penguin_output_streams(proc_num,counter,n,C,output_streams)
+{?
+    counter < n ->
+      {||
+	  get_connection(C,proc_num,counter,out_stream),
+/* Get the stream from Penguin proc_num to Penguin counter.		*/
+	  output_streams = [ out_stream | output_streams_1 ],
+	  get_penguin_output_streams(proc_num,counter+1,n,C,output_streams_1)
+      },
+    default ->
+      {||
+	  output_streams = []
+      }
+}	/* get_penguin_output_streams() */
+
+/***************
+*
+*	setup_penguin(fn,pid,n,i_streams,o_streams,s_i_streams,s_o_streams,s)
+*
+*	It prepares the mergers and the distributors
+*	for a Penguin and then it invokes a Penguin, connecting it to the
+*	mergers and distributors.
+*	fn is the string to make the filenames for the Penguin,
+*	pid is the id of the Penguin,
+*	n is the total number of Penguins,
+*	i_streams are the input streams,
+*	o_streams are the output streams,
+*	s_i_streams are the special input streams for control messages,
+*	s_o_streams are the special output streams for control messages,
+*	s is the status stream to be passed to the Penguin.
+*
+***************/
+
+setup_penguin(fn,pid,n,i_streams,o_streams,s_i_streams,s_o_streams,s)
+{||
+sys:merger(penguin_in_setup,wi),
+/* The output of the merger is the input to the Penguin. */
+connect_merger(penguin_in_setup,i_streams),
+
+sys:distribute(n,dist_in),
+connect_distributor([],0,o_streams,dist_in,wo),
+/* The input to the distributor is the output from the Penguin. */
+
+sys:merger(s_penguin_in_setup,s_wi),
+/* The output of the merger is the input to the Penguin. */
+connect_merger(s_penguin_in_setup,s_i_streams),
+
+sys:distribute(n,s_dist_in),
+connect_distributor([],0,s_o_streams,s_dist_in,s_wo),
+/* The input to the distributor is the output from the Penguin. */
+
+penguin(fn,wi,wo,s_wi,s_wo,n,pid,s)
+
+}	/* setup_penguin() */
+
+/**************
+*
+*	SCHEME WITH n PENGUINS:
+*
+*	At Penguin i:
+*		For regular messages, e.g. clauses:
+*		C[0,i], ... C[n,i] --> merger --> wi
+*		wo --> distributor --> C[i,0], ... C[i,n]
+*
+*		For control messages, e.g. HALT:
+*		D[0,i], ... D[n,i] --> merger --> s_wi
+*		s_wo --> distributor --> D[i,0], ... D[i,n]
+*
+****************/
+
+/***************
+*
+*	connect_distributor(sync,counter,output_streams,dist_in,node_out)
+*
+*	dist_in is the input stream to the distributor.
+*	We attach to the distributor all the output streams in output_streams
+*	and the output node_out from the Penguin, to be the input to the
+*	distributor.
+*
+***************/
+
+connect_distributor(sync,counter,output_streams,dist_in,node_out)
+{?
+    data(sync), output_streams ?= [ s | output_streams_1 ] ->
+      {||
+	  dist_in = [ {"attach", counter, s, done} | dist_in_1 ],
+	  connect_distributor(done, counter + 1, output_streams_1,
+			      dist_in_1, node_out)
+      },
+    data(sync), output_streams ?= [] ->
+      {||
+	  dist_in = node_out
+      }
+}	/* connect_distributor() */
+
+/***************
+*
+*	connect_merger(node_in_setup,input_streams)
+*
+*	It attaches all the streams in input_streams to node_in_setup,
+*	input to the merger.
+*
+***************/
+
+connect_merger(node_in_setup,input_streams)
+{?
+    input_streams ?= [ s | input_streams_1 ] ->
+      {||
+	  node_in_setup = [ {"merge",s} | node_in_setup_1 ],
+	  connect_merger(node_in_setup_1, input_streams_1)
+      },
+    input_streams ?= [] ->
+      {||
+	  node_in_setup = []
+      }
+}	/* connect_merger() */
+
+/***************
+*
+*	make_trouble_msg(m_out,pid)
+*
+***************/
+
+make_trouble_msg(m_out,pid)
+{||
+	make_tuple(2,m_out),
+	m_out[0] = "TROUBLE",
+	m_out[1] = pid			/* Penguin id of the sender */
+}	/* make_trouble_msg() */
+
+/***************
+*
+*	make_halt_msg(m_out,pid)
+*
+***************/
+
+make_halt_msg(m_out,pid)
+{||
+	make_tuple(2,m_out),
+	m_out[0] = "HALT",
+	m_out[1] = pid			/* Penguin id of the sender */
+}	/* make_halt_msg() */
+
+/***************
+*
+*	make_e_stop_msg(m_out,pid)
+*
+***************/
+
+make_e_stop_msg(m_out,pid)
+{||
+	make_tuple(2,m_out),
+	m_out[0] = "E_STOP",
+	m_out[1] = pid			/* Penguin id of the sender */
+}	/* make_e_stop_msg() */
+
+/***************
+*
+*	penguin(file_name,way_in,way_out,s_way_in,s_way_out,n,pid,d)
+*
+*	way_in is the input stream,
+*	way_out is the output stream,
+*	s_way_in is the special input stream,
+*	s_way_out is the special output stream,
+*	n is the number of Penguins,
+*	pid is the id of the Penguin and
+*	d is the status stream which is closed when the Penguin is done.
+*
+***************/
+
+penguin(file_name,way_in,way_out,s_way_in,s_way_out,n,pid,d)
+int in_return_code, last_code;
+/* in_return_code and last_code are declared as mutable, because they are */
+/* passed to the C functions input_phase() and new_clean_up(), while	*/
+/* return_code is a definitional variable, because it is passed to the PCN */
+/* functions receive_init() and broadcast_sums().			*/
+{;
+input_phase(file_name,in_return_code,n,pid),
+	{?
+	in_return_code == TROUBLE ->
+	{||
+stdio:printf("Penguin%d halts in trouble in the input phase.\n",{pid},_),
+	make_trouble_msg(m_out,pid),
+	broadcast_and_halt(m_out,s_way_out,pid,0,n),
+/* It closes s_way_out.							*/
+	way_out = [],
+	d = []
+	},	/* end of in_return_code == TROUBLE */
+	in_return_code == PROOF ->
+	{;
+stdio:printf("Penguin%d halts the search in the input phase.\n",{pid},_),
+	make_halt_msg(m_out,pid),
+	broadcast_and_halt(m_out,s_way_out,pid,0,n),
+/* It closes s_way_out.							*/
+	way_out = [],
+	new_clean_up(last_code),
+		{?
+		last_code == TROUBLE ->
+			{;
+stdio:printf("Penguin%d halts in trouble during clean up.\n",{pid},_),
+			d = []
+			},
+		last_code == NO_TROUBLE ->
+			{;
+stdio:printf("Bye bye from Penguin%d in the Antarctic.\n",{pid},_),
+			d = []
+			}
+		}	/* end of selection on last_code */
+	},	/* end of in_return_code == PROOF */
+	in_return_code == INPUT_READ_ALL ->
+/* Read input clauses: make a tuple P which is a copy of the global array */
+/* Penguins in the underlying C code and sends P[i] to Penguin i, i.e. it */
+/* sends (1 + the number of input clauses assigned as residents to Penguin i) */
+/* so that Penguin i can update its global array Penguins accordingly.	*/
+/* The number sent is the value that Penguin i should give to the lid of the */
+/* next non-input clause that settles down at Penguin i.		*/
+	{||
+	make_tuple(n,P),
+	get_sums(0,n,P),
+broadcast_sums(P,way_out,pid,0,n,way_in,s_way_in,s_way_out,inter1,return_code),
+		{?
+		return_code == TROUBLE ->
+			{||
+			d = []
+			},
+		return_code == PROOF ->
+			{;
+			new_clean_up(last_code),
+			{?
+			last_code == TROUBLE ->
+				{;
+stdio:printf("Penguin%d halts in trouble during clean up.\n",{pid},_),
+				d = []
+				},
+			last_code == NO_TROUBLE ->
+				{;
+stdio:printf("Bye bye from Penguin%d in the Antarctic.\n",{pid},_),
+				d = []
+				}
+			}	/* end of selection on last_code */
+			},	/* end of return_code == PROOF */
+		return_code == HALT_RECEIVED ->
+			{;
+			new_clean_up(last_code),
+			{?
+			last_code == TROUBLE ->
+				{;
+stdio:printf("Penguin%d halts in trouble during clean up.\n",{pid},_),
+				d = []
+				},
+			last_code == NO_TROUBLE ->
+				{;
+stdio:printf("Bye bye from Penguin%d in the Antarctic.\n",{pid},_),
+				d = []
+				}
+			}	/* end of selection on last_code */
+			}	/* end of return_code == HALT_RECEIVED */
+		}	/* end of selection on return_code */
+	},	/* end of in_return_code == INPUT_READ_ALL */
+	in_return_code == INPUT_READ ->
+/* Input successfully read, but it did not contain clauses. 		*/
+/* Thus wait in receive_init() until it receives from the Penguin which read */
+/* the input the value to initialize Penguins[pid].	     		*/
+	{||
+receive_init(way_in,way_out,pid,n,s_way_in,s_way_out,inter1,return_code),
+		{?
+		return_code == TROUBLE ->
+			{||
+			d = []
+			},
+		return_code == PROOF ->
+			{;
+			new_clean_up(last_code),
+			{?
+			last_code == TROUBLE ->
+				{;
+stdio:printf("Penguin%d halts in trouble during clean up.\n",{pid},_),
+				d = []
+				},
+			last_code == NO_TROUBLE ->
+				{;
+stdio:printf("Bye bye from Penguin%d in the Antarctic.\n",{pid},_),
+				d = []
+				}
+			}	/* end of selection on last_code */
+			},	/* end of return_code == PROOF */
+		return_code == HALT_RECEIVED ->
+			{;
+			new_clean_up(last_code),
+			{?
+			last_code == TROUBLE ->
+				{;
+stdio:printf("Penguin%d halts in trouble during clean up.\n",{pid},_),
+				d = []
+				},
+			last_code == NO_TROUBLE ->
+				{;
+stdio:printf("Bye bye from Penguin%d in the Antarctic.\n",{pid},_),
+				d = []
+				}
+			}	/* end of selection on last_code */
+			}	/* end of return_code == HALT_RECEIVED */
+		}	/* end of selection on return_code */
+	},	/* end of in_return_code == INPUT_READ */
+	in_return_code == INPUT_READ_GO ->
+/* Either there is just one Penguin, or the Penguins work in STAND_ALONE */
+/* mode, i.e. ignoring each other.					*/
+	{||
+	way_out = [],
+	s_way_out = [],
+/* It closes the channels because there is no communication.		*/
+	single_infer(pid,return_code),
+		{?
+		return_code == TROUBLE ->
+			{||
+			d = []
+			},
+		return_code == PROOF ->
+			{;
+			new_clean_up(last_code),
+			{?
+			last_code == TROUBLE ->
+				{;
+stdio:printf("Penguin%d halts in trouble during clean up.\n",{pid},_),
+				d = []
+				},
+			last_code == NO_TROUBLE ->
+				{;
+stdio:printf("Bye bye from Penguin%d in the Antarctic.\n",{pid},_),
+				d = []
+				}
+			}	/* end of selection on last_code */
+			}	/* end of return_code == PROOF */
+		}	/* end of selection on return_code */
+	}	/* end of in_return_code == INPUT_READ_GO */
+	}	/* end of selection on in_return_code */
+} /* penguin() */
+
+/***************
+*
+*	get_sums(counter,n,P)
+*
+***************/
+
+get_sums(counter,n,P)
+int report;
+{?
+counter < n ->
+		{;
+		is_up(counter,report),
+		P[counter] = report,
+		get_sums(counter + 1,n,P)
+		}
+}	/* get_sums() */
+
+/***************
+*
+*	broadcast_sums(P,c_out,pid,counter,n,c_in,s_c_in,s_c_out,i1,return_code)
+*
+*	c_in, s_c_in, s_c_out and i1 are passed only to be passed to
+*	receive() and main_infer().
+*
+***************/
+
+broadcast_sums(P,c_out,pid,counter,n,c_in,s_c_in,s_c_out,i1,return_code)
+{?
+counter < n, counter != pid, P[counter] > 0 ->
+		/* Penguin counter is up: send */
+		{||
+		c_out = [{counter,{P[counter]}} | tail],
+broadcast_sums(P,tail,pid,counter+1,n,c_in,s_c_in,s_c_out,i1,return_code)
+		},
+counter < n, counter != pid, P[counter] == 0 ->
+		/* Penguin counter not up: skip */
+		{||
+broadcast_sums(P,c_out,pid,counter+1,n,c_in,s_c_in,s_c_out,i1,return_code)
+		},
+counter < n, counter == pid ->
+		/* Penguin itself: skip */
+		{||
+broadcast_sums(P,c_out,pid,counter+1,n,c_in,s_c_in,s_c_out,i1,return_code)
+		},
+counter == n ->		/* Done */
+		{;
+		{||
+		receive(c_in,s_c_in,pid,n,i1),
+		main_infer(c_out,s_c_out,pid,n,i1,r_code)
+		},
+		return_code  = r_code
+/* It sets return_code only when receive() and main_infer() 		*/
+/* have finished, to make sure that at the upper level, penguin() does not */
+/* invoke new_clean_up() when main_infer() has finished, 		*/
+/* but receive() has not.						*/
+		}
+}	/* broadcast_sums() */
+
+/***************
+*
+*	receive_init(w_in,w_out,pid,n,s_w_in,s_w_out,inter1,return_code)
+*
+*	w_out, s_w_in, s_w_out and inter1 are passed only to be passed to
+*	main_infer() and receive().
+*
+***************/
+
+receive_init(w_in,w_out,pid,n,s_w_in,s_w_out,inter1,return_code)
+{?
+w_in ?= [{num}|next_in] ->
+	{;
+	update_settled_count(num),
+	{||
+	receive(next_in,s_w_in,pid,n,inter1),
+	main_infer(w_out,s_w_out,pid,n,inter1,r_code)
+	},
+	return_code = r_code
+	}
+}	/* receive_init() */
+
+/***************
+*
+*	check_whether_continue(counter,troubled_id,w_in,s_w_in,n_id,n,i1)
+*
+*	Called by receive():
+*	having received "TROUBLE" or "E_STOP"
+*	from the Penguin troubled_id, it checks
+*	whether any other Penguin different from troubled_id and from
+*	itself is up. If yes, it gives back control to receive(),
+*	otherwise it closes the receive/infer interface and halts.
+*
+*	w_in and s_w_in are passed only to be passed to receive().
+*
+***************/
+
+check_whether_continue(counter,troubled_id,w_in,s_w_in,n_id,n,i1)
+int report;
+{?
+counter < n, counter != troubled_id, counter != n_id ->
+	{;
+	is_up(counter,report),
+	{?
+	report > 0 ->	/* Found a Penguin which is up. */
+			receive(w_in,s_w_in,n_id,n,i1),
+	report == 0 ->	/* Proceed to test next Penguin. */
+	check_whether_continue(counter+1,troubled_id,w_in,s_w_in,n_id,n,i1)
+	}
+	},
+counter < n, counter == troubled_id ->
+/* Skip the Penguin which just sent TROUBLE or E_STOP.	*/
+	check_whether_continue(counter+1,troubled_id,w_in,s_w_in,n_id,n,i1),
+counter < n, counter == n_id ->	/* Penguin itself: skip. */
+	check_whether_continue(counter+1,troubled_id,w_in,s_w_in,n_id,n,i1),
+counter == n ->		/* No other Penguins is up: no more to receive. */
+		{||
+		i1 = [],
+stdio:printf("Receive/infer interface closed at Penguin%d.\n",{n_id},_)
+		}
+}	/* check_whether_continue() */
+
+/***************
+*
+*	receive(w_in,s_w_in,n_id,n,inter1)
+*
+*	receive() acts as a consumer on w_in and s_w_in,
+*	where it consumes clauses on w_in and control messages on s_w_in,
+*	sent by the other Penguins.
+*	receive() acts as a producer on inter1, the interface between receive
+*	and main_infer().
+*
+***************/
+
+receive(w_in,s_w_in,n_id,n,inter1)
+int ok;
+/* ok is declared mutable because it is passed to the C function	*/
+/* store_mesg().							*/
+{?
+s_w_in ?= [{text,pid}|s_next_in] , text == "HALT" ->
+	{||
+stdio:printf("HALT received at Penguin%d from Penguin%d.\n",{n_id,pid},_),
+	{?
+	pid == n_id -> /* The infer part of this same Penguin has succeeded. */
+	{||
+	inter1 = [],
+stdio:printf("Receive/infer interface closed at Penguin%d.\n",{n_id},_)
+	},
+	pid != n_id -> /* Another Penguin has succeeded. */
+	{;
+	store_special(text,pid),
+/* It stores the HALT message: the sender of such message has terminated */
+/* successfully, thus the Penguin which receives it will also halt.	*/
+	inter1 = ["HALT_RECEIVED"],
+stdio:printf("Receive/infer interface closed at Penguin%d.\n",{n_id},_)
+	}	/* end of Another Penguin has succeeded. */
+	}	/* end of choice upon comparison of pid and n_id */
+	},	/* end of HALT received */
+
+s_w_in ?= [{text,pid}|s_next_in], text == "E_STOP" ->
+	{||
+stdio:printf("E_STOP received at Penguin%d from Penguin%d.\n",{n_id,pid},_),
+	{?
+	pid == n_id ->	/* The infer part of this same Penguin stopped. */
+	{||
+	inter1 = [],
+stdio:printf("Receive/infer interface closed at Penguin%d.\n",{n_id},_)
+	},
+	pid != n_id ->	/* Another Penguin stopped. */
+	{;
+	store_special(text,pid),
+/* It stores the E_STOP message: the sender of such message has terminated */
+/* in early-stop, thus the Penguin which receives it will not send/receive */
+/* any more messages to the sender of the E_STOP message.		*/
+	{?
+	n == 2 ->
+/* If there are just two Penguins, when one has stopped, the other one */
+/* cannot receive anything else.					*/
+		{||
+		inter1 = [],
+stdio:printf("Receive/infer interface closed at Penguin%d.\n",{n_id},_)
+		},
+	n > 2 ->
+/* If there are more than two Penguins, it may still receive from others. */
+		{||
+		check_whether_continue(0,pid,w_in,s_next_in,n_id,n,inter1)
+		}
+	}	/* end choice upon number of Penguins */
+	}	/* end of Another Penguin stopped */
+	}	/* end of choice upon comparison of pid with n_id */
+	},	/* end of E_STOP received */
+
+s_w_in ?= [{text,pid}|next_in], text == "TROUBLE" ->
+	{||
+stdio:printf("TROUBLE received at Penguin%d from Penguin%d.\n",{n_id,pid},_),
+	{?
+	pid == n_id ->	/* The infer part of this same Penguin is in trouble. */
+	{||
+	inter1 = [],
+stdio:printf("Receive/infer interface closed at Penguin%d.\n",{n_id},_)
+	},
+	pid != n_id ->	/* Another Penguin is in trouble. */
+	{;
+	store_special(text,pid),
+/* It stores the TROUBLE message: the sender of such message has terminated */
+/* upon trouble, thus the Penguin which receives it will not send/receive */
+/* any more messages to the sender of the TROUBLE message.		*/
+	{?
+	n == 2 ->
+/* If there are just two Penguins, when one is in trouble, the other one */
+/* cannot receive anything else.					*/
+		{||
+		inter1 = [],
+stdio:printf("Receive/infer interface closed at Penguin%d.\n",{n_id},_)
+		},
+	n > 2 ->
+/* If there are more than two Penguins, it may still receive from others. */
+		{||
+		check_whether_continue(0,pid,w_in,s_next_in,n_id,n,inter1)
+		}
+	}	/* end choice upon number of Penguins */
+	}	/* end of Another Penguin is in trouble */
+	}	/* end of choice upon comparison of pid with n_id */
+	},	/* end of TROUBLE received */
+
+w_in ?= [{text,pid,lid,bt,dest}|next_in] ->
+	{;
+	store_mesg(text,pid,lid,bt,dest,ok),
+	{?
+	ok == NO_TROUBLE ->	/* store_mesg() succeeded */
+		{||
+		inter1 = ["RECEIVED"|new_inter1],
+/* The receive process informs the main_infer process that it has received. */
+		receive(next_in,s_w_in,n_id,n,new_inter1)
+		},
+	ok == TROUBLE ->	/* store_mesg() failed */
+		{;
+		inter1 = ["TROUBLE"],
+stdio:printf("Penguin%d sends TROUBLE on the receive/infer ",{n_id},_),
+stdio:printf("interface and closes it.\n",{},_)
+		}
+	}	/* end of choice upon result of store_mesg() */
+	},	/* end of clause received */
+
+w_in ?= [], s_w_in ?= [] ->
+	{||
+	inter1 = [],
+stdio:printf("Receive/infer interface closed at Penguin%d.\n",{n_id},_)
+	}
+}	/* receive() */
+
+/***************
+*
+*	main_infer(channel_out,s_channel_out,pid,n,i1,r_code)
+*
+*	main_infer acts as consumer on i1, the interface between receive and
+*	main_infer, and as producer on channel_out, where it sends clauses 
+*	to the other Penguins, and s_channel_out, where it sends control 
+*	messages, e.g. HALT, to the other Penguins.
+*
+***************/
+
+main_infer(channel_out,s_channel_out,pid,n,i1,r_code)
+int toc, result;
+/* toc and result are declared mutable because they are passed to the C	*/
+/* functions get_type_of_co(), infer() and small_infer().		*/
+{;
+	get_type_of_co(toc),
+	{?
+	toc == 0 ->
+/* If Flag[PRIORITY_MSGS].val == 0:					*/
+		{||
+		infer(result)
+		},
+	toc == 1 ->
+/* If Flag[PRIORITY_MSGS].val == 1:					*/
+		{||
+		small_infer(result)
+		}
+	},
+	{?
+	result == PROOF	->
+		{||
+stdio:printf("Penguin%d halts the search.\n",{pid},_),
+		make_halt_msg(m_out,pid),
+		channel_out = [],
+		broadcast_and_halt(m_out,s_channel_out,pid,0,n),
+/* It closes s_channel_out.						*/
+		r_code = PROOF
+		},
+	result == EARLY_STOP	->
+		{||
+/* It halts because it has hit some threshold. It sends E_STOP, */
+/* to prevent other Penguins from sending messages.		*/
+stdio:printf("Penguin%d halts the search for early stop.\n",{pid},_),
+		make_e_stop_msg(m_out,pid),
+		broadcast_and_halt(m_out,s_channel_out,pid,0,n),
+/* It closes s_channel_out.						*/
+		channel_out = [],
+		r_code = PROOF
+		},
+	result == HALT_RECEIVED	->
+		{||
+stdio:printf("Penguin%d halts the search having received HALT.\n",{pid},_),
+		channel_out = [],
+		s_channel_out = [],
+		r_code = HALT_RECEIVED
+		},
+	result == TROUBLE ->
+		{||
+stdio:printf("Penguin%d halts the search in trouble.\n",{pid},_),
+		make_trouble_msg(m_out,pid),
+		broadcast_and_halt(m_out,s_channel_out,pid,0,n),
+/* It closes s_channel_out.						*/
+		channel_out = [],
+		r_code = TROUBLE
+		},
+	result == WAIT_TO_RECEIVE ->
+		{?
+		i1 ?= ["RECEIVED"|next_i1] ->
+			{||
+		main_infer(channel_out,s_channel_out,pid,n,next_i1,r_code)
+			},
+		i1 ?= ["HALT_RECEIVED"] ->
+			{||
+stdio:printf("Penguin%d halts the search having received HALT.\n",{pid},_),
+			channel_out = [],
+			s_channel_out = [],
+			r_code = HALT_RECEIVED
+			},
+		i1 ?= ["TROUBLE"] ->
+			{;
+stdio:printf("Penguin%d halts in trouble: it needs to receive, but ",{pid},_),
+stdio:printf("its receive/infer interface has been closed in trouble.\n",{},_),
+			make_trouble_msg(m_out,pid),
+		broadcast_and_halt(m_out,s_channel_out,pid,0,n),
+/* It closes s_channel_out.						*/
+			channel_out = [],
+			r_code = TROUBLE
+			},
+		i1 ?= [] ->
+			{;
+stdio:printf("Penguin%d halts: it needs to receive, ",{pid},_),
+stdio:printf("but the receive/infer interface has been closed.\n",{},_),
+			channel_out = [],
+			s_channel_out = [],
+			r_code = HALT_RECEIVED
+/* Strictly speaking the Penguin has not received HALT, but it returns	*/
+/* HALT_RECEIVED so that new_clean_up() will be invoked by penguin(). */
+/* The only situation where it should not invoke new_clean_up() is if it */
+/* halts in trouble.							*/
+			}
+		},
+	result == CONTINUATION ->
+		{||
+		main_infer(channel_out,s_channel_out,pid,n,i1,r_code)
+		},
+	result > 0 ->
+		{||
+		send_msgs(channel_out,result,pid,n,i1,s_channel_out,r_code)
+/* It calls main_infer() when it is done: i1, s_channel_out and r_code are */
+/* passed just to be passed to main_infer().				*/
+		}
+	}	/* end of selection on result */
+}	/* main_infer() */
+
+/***************
+*
+*	single_infer(pid,r_code)
+*
+*	Execution in case of single Penguin or Penguins working in 
+*	stand alone mode.
+*
+***************/
+
+single_infer(pid,r_code)
+int result;
+{;
+	infer_alone(result),
+	{?
+	result == PROOF	->
+		{||
+stdio:printf("Penguin%d halts the search.\n",{pid},_),
+		r_code = PROOF
+		},
+	result == EARLY_STOP	->
+		{||
+stdio:printf("Penguin%d halts the search for early stop.\n",{pid},_),
+		r_code = PROOF
+		},
+	result == TROUBLE ->
+		{||
+stdio:printf("Penguin%d halts the search in trouble.\n",{pid},_),
+		r_code = TROUBLE
+		}
+	}	/* end of selection on result */
+}	/* single_infer() */
+
+/***************
+*
+*	send_msgs(c_out,howmany,n_id,n,i1,s_c_out,r_code)
+*
+*	i1, s_c_out and r_code are passed only to be given to main_infer().
+*
+***************/
+
+send_msgs(c_out,howmany,n_id,n,i1,s_c_out,r_code)
+int howmany;
+/* howmany is declared mutable, because send_msgs() is called with a mutable */
+/* actual parameter result by main_infer(). In turn result is mutable */
+/* because it is set by the C functions infer() or small_infer().	*/
+char text[MAX_MSG];
+int pid, lid, bt, dest, rec;
+/* text, pid, lid, bt, dest and rec are declared mutable, because they are */
+/* passed to C functions.						*/
+{?
+howmany > 0 ->
+		{;
+		get_mesg(text,pid,lid,bt,dest,rec),
+/* It gets the given_msg, i.e. the message selected to be sent from the */
+/* Outbound_msgs list.							*/
+		{?	/* selection on rec */
+		rec == 0 ->
+		{||
+stdio:printf("Warning:Penguin%d finds fewer clauses than expected.\n",{n_id},_),
+		main_infer(c_out,s_c_out,n_id,n,i1,r_code)
+		},
+		rec == 1  ->
+			{?	/* selection on dest */
+			dest == NONE ->
+			{;
+stdio:printf("Warning: Penguin%d gets clause with no destination.\n",{n_id},_),
+			howmany := howmany - 1,
+			send_msgs(c_out,howmany,n_id,n,i1,s_c_out,r_code)
+			},
+			dest == n_id ->
+			{;
+stdio:printf("Warning: Penguin%d gets clause destinated to itself.\n",{n_id},_),
+			howmany := howmany - 1,
+			send_msgs(c_out,howmany,n_id,n,i1,s_c_out,r_code)
+			},
+			dest >= 0, dest < n, dest != n_id ->	/* Routing */
+			{;
+			make_tuple(5,m_out),
+			m_out[0] = text,	/* clause */
+			m_out[1] = pid,		/* Penguin id */
+			m_out[2] = lid,		/* local id */
+			m_out[3] = bt,		/* birth time */
+			m_out[4] = dest,	/* destination */
+/* No need to check that the destination Penguin is up, because it has been */
+/* checked when the destination of the new settler has been determined.	    */
+			c_out = [{dest,m_out}|tail],
+			howmany := howmany - 1,
+			send_msgs(tail,howmany,n_id,n,i1,s_c_out,r_code)
+			},
+			default ->
+/* Either dest == IN_ALL_PENGUINS_* or dest == ALL_PENGUINS: broadcasting. */
+			{;
+			make_tuple(5,m_out),
+			m_out[0] = text,	/* clause */
+			m_out[1] = pid,		/* Penguin id */
+			m_out[2] = lid,		/* local id */
+			m_out[3] = bt,		/* birth time */
+			m_out[4] = dest,	/* destination */
+			howmany := howmany - 1,
+broadcast_and_recur(m_out,c_out,n_id,0,n,howmany,i1,s_c_out,r_code)
+			}
+			}	/* selection on dest */
+		}	/* selection on rec */
+		},	/* end of howmany > 0 */
+howmany == 0 ->
+		{||
+		main_infer(c_out,s_c_out,n_id,n,i1,r_code)
+		}
+}	/* send_msgs() */
+
+/***************
+*
+*	broadcast_and_halt(m_out,c_out,n_id,counter,n)
+*
+***************/
+
+broadcast_and_halt(m_out,c_out,n_id,counter,n)
+int report;
+{?
+counter < n ->
+	{;
+	is_up(counter,report),
+	{?
+	report > 0 ->	/* Penguin counter is up */
+		{||
+		c_out = [{counter,m_out} | tail],
+		broadcast_and_halt(m_out,tail,n_id,counter + 1,n)
+		},
+	report == 0 ->	/* Penguin counter is not up */
+		{||
+		broadcast_and_halt(m_out,c_out,n_id,counter + 1,n)
+		}
+	}	/* end of selection on report */
+	},	/* end of counter < n */
+counter == n ->
+		{||
+		c_out = []
+		}
+}	/* broadcast_and_halt() */
+
+/***************
+*
+*	broadcast_and_recur(m_out,c_out,n_id,counter,n,h,i1,s_c_out,r_code)
+*
+*	h, i1, s_c_out and r_code are passed only to be passed to send_msgs().
+*
+***************/
+
+broadcast_and_recur(m_out,c_out,n_id,counter,n,h,i1,s_c_out,r_code)
+int h;
+/* It is declared mutable, because it is used as actual parameter for the */
+/* formal parameter howmany of send_msgs().				*/
+int report;
+/* It is declared mutable because it is passed to the C function is_up(). */
+{?
+counter < n, counter != n_id ->
+	{;
+	is_up(counter,report),
+	{?
+	report > 0 -> /* Penguin counter is up: send */
+	{||
+	c_out = [{counter,m_out} | tail],
+broadcast_and_recur(m_out,tail,n_id,counter+1,n,h,i1,s_c_out,r_code)
+	},
+	report == 0 -> /* Penguin counter not up: skip */
+	{||
+broadcast_and_recur(m_out,c_out,n_id,counter+1,n,h,i1,s_c_out,r_code)
+	}
+	}	/* end of selection on report */
+	},	/* end of counter < n, counter != n_id */
+counter < n, counter == n_id ->		/* Penguin itself: skip */
+	{||
+broadcast_and_recur(m_out,c_out,n_id,counter+1,n,h,i1,s_c_out,r_code)
+	},
+counter == n ->		/* Done: give back control to send_msgs() */
+	{||
+	send_msgs(c_out,h,n_id,n,i1,s_c_out,r_code)
+	}
+}	/* broadcast_and_recur() */

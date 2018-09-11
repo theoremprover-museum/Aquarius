@@ -1,0 +1,8 @@
+# awk.proto
+
+/^long .*\)$/
+/^int .*\)$/
+/^char .*\)$/
+/^struct .*\)$/
+/^void .*\)$/
+

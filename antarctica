@@ -1,0 +1,34 @@
+#csh script antarctica
+
+# old version
+# set file="sample"
+# set p=4
+# set pcn="m_penguin -n $p"
+# echo 'm_penguin:multi_penguin("'$file'",'$p',done),exit(done)' | $pcn
+
+if ($#argv != 3) then
+	echo "Usage: ${0} [d(istributed), p(lain), (d)e(bug)] <nodes> <file>"
+	exit 1
+endif
+
+if (${1} == "p") then
+	set pcn="m_penguin -n ${2}"
+
+else if (${1} == "e") then
+	set pcn="m_penguinpdb -n ${2}"
+
+else if (${1} == "d") then
+	if (${2} == 2) then
+		set pcn="m_penguin -nodes sblapis2"
+	else if (${2} == 3) then
+		set pcn="m_penguin -nodes sblapis2:sblapis4"
+	else if (${2} == 4) then
+		set pcn="m_penguin -nodes sblapis2:sblapis4:sblapis5"
+		endif
+	endif
+	endif
+endif
+endif
+endif
+
+echo 'm_penguin:multi_penguin("'${3}'",'${2}',done),exit(done)' | $pcn

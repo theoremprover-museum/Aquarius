@@ -1,0 +1,12 @@
+#    make_proto
+/bin/mv proto.h proto.h~
+echo "/* proto.h made "   >  proto.h
+date                           >> proto.h
+echo "*/"                      >> proto.h
+foreach i ($argv)
+echo ""                        >> proto.h
+echo "/* $i */"                >> proto.h
+echo ""                        >> proto.h
+awk -f awk.proto< $i | sed "s/(.*/();/" >> proto.h
+end
+

@@ -1,0 +1,12 @@
+#    make_allfunctions
+/bin/mv allfunctions.h allfunctions.h~
+echo "/* allfunctions.h made "   >  allfunctions.h
+date                           >> allfunctions.h
+echo "*/"                      >> allfunctions.h
+foreach i ($argv)
+echo ""                        >> allfunctions.h
+echo "/* $i */"                >> allfunctions.h
+echo ""                        >> allfunctions.h
+awk -f awk.allfunctions< $i | sed "s/(.*/();/" >> allfunctions.h
+end
+
