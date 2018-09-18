@@ -11,6 +11,9 @@ described in her PhD thesis, which includes a chapter devoted to Aquarius:
 Maria Paola Bonacina. Distributed automated deduction. Ph.D. Thesis, Department of Computer Science, State University of New York
 at Stony Brook, December 1992. Available at http://profs.sci.univr.it/~bonacina/pub_theses.html
 
+Aquarius was a Clause-Diffusion prover for first-order logic with equality incorporating as
+sequential base the code of William W. (Bill) McCune's Otter (version 2.2).
+
 Aquarius was written in C and PCN for workstation networks.
 This source code repository includes all .c files, .h files and a main .pcn file.
 It also includes a makefile showing how the binary, named m_penguin, was built.
@@ -31,4 +34,5 @@ In Proceedings of the First International Workshop on Parallelization in Inferen
 December 1990. Springer, Lecture Notes in Artificial Intelligence 590, 370-370, 1992; DOI: 10.1007/3-540-55425-4_18.
 
 For further information on Clause-Diffusion see: http://profs.sci.univr.it/~bonacina/distributed.html
+
 For further information on the Clause-Diffusion provers see:  http://profs.sci.univr.it/~bonacina/cdprovers.html
